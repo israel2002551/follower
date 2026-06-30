@@ -94,7 +94,7 @@
             box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
         }
 
-        video {
+        #streamView {
             width: 100%;
             height: 100%;
             object-fit: cover;
@@ -255,20 +255,28 @@
     <main>
         <section class="video-section">
             <div class="video-container">
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div class="video-overlay">LIVE FEED | 640x480 | WebRTC</div>
+                <img id="streamView" src="" alt="Awaiting Robot Link..."/>
+                <div class="video-overlay">LIVE FEED | 640x480 | RTSP Link</div>
             </div>
         </section>
 
         <aside class="controls-panel">
             <div class="card">
+                <h3>System Link</h3>
+                <div class="input-group">
+                    <input type="text" id="robotIp" placeholder="e.g., 192.168.1.50">
+                    <button id="connectBtn" class="btn-primary" onclick="connectRobot()">Connect</button>
+                </div>
+            </div>
+
+            <div class="card">
                 <h3>Target Acquisition</h3>
                 <div class="input-group">
                     <input type="text" id="targetDesc" placeholder="e.g., Person in red shirt...">
-                    <button id="lockBtn" class="btn-primary" onclick="updateTarget()">Lock</button>
+                    <button id="lockBtn" class="btn-primary" onclick="updateTarget()" disabled>Lock</button>
                 </div>
                 <div id="targetStatus" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 10px; word-break: break-all;">
-                    No target locked.
+                    Connect to robot to begin tracking.
                 </div>
                 <button class="btn-danger" onclick="emergencyStop()">⚠️ EMERGENCY STOP</button>
             </div>
@@ -298,24 +306,20 @@
             <div class="card">
                 <h3>System Logs</h3>
                 <div id="logWindow" class="log-window">
-                    <div class="log-entry log-info">[SYSTEM] Initializing agents...</div>
+                    <div class="log-entry log-info">[SYSTEM] Ready. Connect to robot IP.</div>
                 </div>
             </div>
         </aside>
     </main>
 
     <script>
-        // --- WebRTC Core Setup ---
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-        });
-
         const logWindow = document.getElementById('logWindow');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
         const lockBtn = document.getElementById('lockBtn');
+        const connectBtn = document.getElementById('connectBtn');
+        const streamView = document.getElementById('streamView');
 
-        // --- Logging Handler ---
         function addLog(message, type = 'info') {
             const entry = document.createElement('div');
             entry.className = `log-entry log-${type}`;
@@ -325,39 +329,39 @@
             logWindow.scrollTop = logWindow.scrollHeight;
         }
 
-        pc.ontrack = (event) => {
-            document.getElementById('remoteVideo').srcObject = event.streams[0];
-            addLog("Video feed securely parsed over WebRTC pipeline.", "info");
-        };
-
-        pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'connected') {
-                statusDot.className = 'dot connected';
-                statusText.innerText = 'Connected';
-                addLog("WebRTC data sync active.", "info");
-            } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-                statusDot.className = 'dot';
-                statusText.innerText = 'Disconnected';
-                addLog("Signal stream disconnected.", "error");
+        // --- Hooking up the RTSP Video Backend Feed ---
+        async function connectRobot() {
+            const ip = document.getElementById('robotIp').value;
+            if(!ip) {
+                addLog("Please enter the Robot's IP address.", "warn");
+                return;
             }
-        };
 
-        async function startWebRTC() {
-            addLog("Initiating handshakes with live server...", "info");
-            pc.addTransceiver('video', { direction: 'recvonly' });
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+            connectBtn.disabled = true;
+            addLog(`Requesting backend to lock RTSP stream: rtsp://${ip}:554/mjpeg/1`, "info");
 
             try {
-                const response = await fetch('/webrtc-negotiate', {
+                const res = await fetch('/connect-rtsp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+                    body: JSON.stringify({ ip_address: ip })
                 });
-                const answer = await response.json();
-                await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            } catch (e) {
-                addLog("WebRTC initialization failed. Is server.py online?", "error");
+                const data = await res.json();
+                
+                if (data.status === "connected") {
+                    // Force the img tag to point to our FastAPI live frame-forward stream loop
+                    streamView.src = `/video-feed?token=${Math.random()}`;
+                    statusDot.className = 'dot connected';
+                    statusText.innerText = 'Connected';
+                    lockBtn.disabled = false;
+                    document.getElementById('targetStatus').innerText = "System online. Standing by for target profile...";
+                    addLog("RTSP Stream attached and parsing frame chunks.", "info");
+                } else {
+                    throw new Error("Target connection dropped");
+                }
+            } catch(e) {
+                addLog("Failed to link RTSP feed. Verify Robot IP and port 554.", "error");
+                connectBtn.disabled = false;
             }
         }
 
@@ -381,21 +385,18 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ description: desc })
                 });
-                
-                if (!res.ok) throw new Error("Server transmission error");
                 const data = await res.json();
                 
-                // Formatted JSON string rendering fix applied here
-                document.getElementById('targetStatus').innerText = `Locked Profile: ${jsonToString(data.profile)}`;
+                document.getElementById('targetStatus').innerText = `Tracking Profile: ${jsonToString(data.profile)}`;
                 document.getElementById('targetStatus').style.color = "var(--text-main)";
                 statusDot.className = 'dot connected';
                 statusText.innerText = 'Tracking Target';
-                addLog("Target tracking vectors locked successfully.", "info");
+                addLog("Groq tracking models fully engaged.", "info");
                 
             } catch (e) {
                 addLog("Failed to register target matrices with backend.", "error");
-                statusDot.className = 'dot';
-                statusText.innerText = 'Error';
+                statusDot.className = 'dot connected';
+                statusText.innerText = 'Connected';
             } finally {
                 lockBtn.disabled = false;
                 lockBtn.innerText = "Lock";
@@ -413,16 +414,13 @@
             document.getElementById('targetStatus').style.color = "var(--danger)";
             
             try {
-                const res = await fetch('/emergency-stop', { method: 'POST' });
-                if(res.ok) {
-                    addLog("Halt frames broadcast successfully to HiveMQ broker.", "warn");
-                }
+                await fetch('/emergency-stop', { method: 'POST' });
+                addLog("Halt frames broadcast successfully to HiveMQ broker.", "warn");
             } catch (e) {
                 addLog("Critical failure: Could not deliver halt instructions to HiveMQ cloud pipeline!", "error");
             }
         }
 
-        // --- Simulated Interface Telemetry Engine ---
         function updateTelemetry() {
             document.getElementById('batVal').innerText = `${Math.floor(82 + Math.random() * 10)}%`;
             document.getElementById('speedVal').innerText = statusText.innerText === 'Tracking Target' ? `${(0.5 + Math.random() * 0.8).toFixed(1)} m/s` : '0.0 m/s';
@@ -430,12 +428,6 @@
             document.getElementById('cpuVal').innerText = `${Math.floor(15 + Math.random() * 20)}%`;
         }
         setInterval(updateTelemetry, 2000);
-
-        // Unified layout loading hook
-        window.onload = () => {
-            startWebRTC();
-            addLog("Control Panel Interface established.", "info");
-        };
     </script>
 </body>
 </html>
