@@ -19,12 +19,15 @@ CONTROL_TOPIC = f"nodes/{ROBOT_ID}/hardware_control"
 TELEMETRY_TOPIC = f"nodes/{ROBOT_ID}/telemetry"
 
 current_target_profile = {"attributes": "human"}
-frame_center_x = 320  # Midpoint of 640px horizontal resolution
+frame_center_x = 320  
 rtsp_cap = None
 frame_counter = 0
 
-# Fused global distance parameter from ToF & Sonar (in millimeters)
+# Fused global distance parameter (in millimeters)
 fused_distance_mm = 0.0
+
+# System State: "AUTO" or "MANUAL"
+system_mode = "AUTO"
 
 # --- Sensor Fusion Decision Handler ---
 def on_message(client, userdata, msg):
@@ -35,13 +38,10 @@ def on_message(client, userdata, msg):
             laser = float(payload.get("laser_mm", -1))
             sonic = float(payload.get("sonic_mm", 9999))
             
-            # Scenario A: Laser is operating perfectly (Highest priority precision)
             if 20 < laser < 1200:
                 fused_distance_mm = laser
-            # Scenario B: Laser is blinded (e.g., dark clothes) -> Fall back to Ultrasonic
             elif 20 < sonic < 3000:
                 fused_distance_mm = sonic
-            # Scenario C: Out of range bounds
             else:
                 fused_distance_mm = 0.0 
     except Exception as e:
@@ -78,9 +78,35 @@ async def set_target(payload: dict):
 
 @app.post("/emergency-stop")
 async def emergency_stop():
-    # Simplified payload without "pan"
+    global system_mode
+    system_mode = "MANUAL" # Drop back to manual safety on E-stop
     mqtt_client.publish(CONTROL_TOPIC, json.dumps({"drive": "STOP"}), qos=2)
-    return {"status": "HALTED"}
+    return {"status": "HALTED", "mode": system_mode}
+
+# --- New: Mode Selector Route ---
+@app.post("/set-mode")
+async def set_mode(payload: dict):
+    global system_mode
+    requested_mode = payload.get("mode", "AUTO").upper()
+    if requested_mode in ["AUTO", "MANUAL"]:
+        system_mode = requested_mode
+        # Cut motor speeds to 0 immediately during transitions
+        mqtt_client.publish(CONTROL_TOPIC, json.dumps({"drive": "STOP"}))
+        return {"status": "success", "mode": system_mode}
+    return {"status": "error", "message": "Invalid mode specified"}
+
+# --- New: Manual Control Route ---
+@app.post("/manual-drive")
+async def manual_drive(payload: dict):
+    global system_mode
+    if system_mode != "MANUAL":
+        return {"status": "error", "message": "Enable Manual Mode first"}
+    
+    action = payload.get("action", "STOP").upper()
+    if action in ["FORWARD", "BACKWARD", "LEFT", "RIGHT", "STOP"]:
+        mqtt_client.publish(CONTROL_TOPIC, json.dumps({"drive": action}))
+        return {"status": "success", "action": action}
+    return {"status": "error", "message": "Invalid direction"}
 
 async def generate_frames():
     global rtsp_cap, frame_counter
@@ -94,7 +120,8 @@ async def generate_frames():
             continue
         
         frame_counter += 1
-        if frame_counter % 6 == 0:
+        # Only analyze camera frames if AI tracking mode is explicitly enabled
+        if frame_counter % 6 == 0 and system_mode == "AUTO":
             asyncio.create_task(run_agentic_pipeline(frame.copy()))
             
         ret, jpeg = cv2.imencode('.jpg', frame)
@@ -103,7 +130,7 @@ async def generate_frames():
                    b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
         await asyncio.sleep(0.01)
 
-# --- Vision AI & Whole-Body Tracking Decisions ---
+# --- Vision AI Pipeline (Unchanged, now respects AUTO state flag) ---
 async def run_agentic_pipeline(img):
     global current_target_profile, fused_distance_mm
     try:
@@ -126,27 +153,22 @@ async def run_agentic_pipeline(img):
         coordinates = json.loads(response.choices[0].message.content)
         tx = coordinates.get("x")
         
-        if tx is not None:
-            # Calculate deviation from the horizontal center
+        if tx is not None and system_mode == "AUTO": # Final safety gate
             error_x = tx - frame_center_x
             motor_action = "STOP"
             
-            # 1. Yaw Tracking (If target is off-center, spin the entire robot to face them)
-            if error_x > 75:     # Target is to the right
+            if error_x > 75:
                 motor_action = "RIGHT"
-            elif error_x < -75:  # Target is to the left
+            elif error_x < -75:
                 motor_action = "LEFT"
-                
-            # 2. Distance Tracking (If target is centered, maintain distance threshold)
             else:
-                if fused_distance_mm > 450:     # Person is moving away (Farther than 45cm)
+                if fused_distance_mm > 450:
                     motor_action = "FORWARD"
-                elif 0 < fused_distance_mm < 280: # Person is too close (Closer than 28cm)
+                elif 0 < fused_distance_mm < 280:
                     motor_action = "BACKWARD"
                 else:
                     motor_action = "STOP"
             
-            # Send simplified command
             control_payload = {"drive": motor_action}
             mqtt_client.publish(CONTROL_TOPIC, json.dumps(control_payload))
             
