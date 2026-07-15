@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Human Following Robot Control Panel</title>
+    <title>AI & Manual Robot Control Panel</title>
     <style>
         :root {
             --bg-body: #0f172a;
@@ -65,6 +65,7 @@
         }
 
         .dot.connected { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .dot.manual { background: var(--warning); box-shadow: 0 0 10px var(--warning); }
         .dot.locking { background: var(--warning); box-shadow: 0 0 10px var(--warning); animation: pulse 1s infinite; }
 
         @keyframes pulse {
@@ -135,6 +136,13 @@
             padding-bottom: 0.5rem;
         }
 
+        .mode-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
         .input-group {
             display: flex;
             gap: 10px;
@@ -170,16 +178,13 @@
             gap: 8px;
         }
 
-        .btn-primary {
-            background: var(--accent);
-            color: #0f172a;
-        }
+        .btn-primary { background: var(--accent); color: #0f172a; }
         .btn-primary:hover { background: var(--accent-hover); }
-        .btn-primary:disabled {
-            background: var(--bg-input);
-            color: var(--text-muted);
-            cursor: not-allowed;
-        }
+        .btn-primary:disabled { background: var(--bg-input); color: var(--text-muted); cursor: not-allowed; }
+
+        .btn-secondary { background: var(--bg-input); color: var(--text-main); }
+        .btn-secondary:hover { background: #475569; }
+        .btn-secondary.active { background: var(--accent); color: #0f172a; }
 
         .btn-danger {
             background: var(--danger);
@@ -190,6 +195,39 @@
             margin-top: 10px;
         }
         .btn-danger:hover { background: #dc2626; }
+
+        /* --- D-PAD Grid CSS Layout --- */
+        .dpad-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 220px;
+            margin: 0 auto;
+            opacity: 0.4;
+            pointer-events: none;
+            transition: all 0.3s ease;
+        }
+
+        .dpad-container.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .dpad-btn {
+            background: var(--bg-input);
+            color: white;
+            font-size: 1.5rem;
+            height: 60px;
+            border-radius: 8px;
+            user-select: none;
+        }
+        .dpad-btn:active, .dpad-btn.pressed {
+            background: var(--accent);
+            color: #0f172a;
+        }
+        .dpad-btn.stop-btn { background: #475569; }
+        .dpad-btn.stop-btn:active { background: var(--danger); color: white; }
 
         .telemetry-grid {
             display: grid;
@@ -204,22 +242,12 @@
             text-align: center;
         }
 
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-bottom: 5px;
-        }
-
-        .stat-value {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: var(--accent);
-            font-family: monospace;
-        }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; color: var(--accent); font-family: monospace; }
 
         .log-window {
             background: #000;
-            height: 150px;
+            height: 120px;
             overflow-y: auto;
             padding: 10px;
             font-family: 'Courier New', monospace;
@@ -244,7 +272,7 @@
     <header>
         <div class="logo">
             <span>🤖</span>
-            <span>HiveMQ Multi-Agent Control</span>
+            <span>Sentinel Hybrid Control Platform</span>
         </div>
         <div class="status-indicator">
             <div id="statusDot" class="dot"></div>
@@ -256,7 +284,7 @@
         <section class="video-section">
             <div class="video-container">
                 <img id="streamView" src="" alt="Awaiting Robot Link..."/>
-                <div class="video-overlay">LIVE FEED | 640x480 | RTSP Link</div>
+                <div class="video-overlay">LIVE RTSP STREAM ENGINE</div>
             </div>
         </section>
 
@@ -270,9 +298,34 @@
             </div>
 
             <div class="card">
+                <h3>Operational Mode</h3>
+                <div class="mode-selector">
+                    <button id="modeAuto" class="btn-secondary active" onclick="setSystemMode('AUTO')" disabled>AI Track</button>
+                    <button id="modeManual" class="btn-secondary" onclick="setSystemMode('MANUAL')" disabled>Manual</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Manual Steer (W,A,S,D / Keys)</h3>
+                <div class="dpad-container" id="dpadPanel">
+                    <div></div>
+                    <button class="dpad-btn" onmousedown="manualSteer('FORWARD')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('FORWARD')" ontouchend="manualSteer('STOP')">▲</button>
+                    <div></div>
+                    
+                    <button class="dpad-btn" onmousedown="manualSteer('LEFT')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('LEFT')" ontouchend="manualSteer('STOP')">◀</button>
+                    <button class="dpad-btn stop-btn" onclick="manualSteer('STOP')">■</button>
+                    <button class="dpad-btn" onmousedown="manualSteer('RIGHT')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('RIGHT')" ontouchend="manualSteer('STOP')">▶</button>
+                    
+                    <div></div>
+                    <button class="dpad-btn" onmousedown="manualSteer('BACKWARD')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('BACKWARD')" ontouchend="manualSteer('STOP')">▼</button>
+                    <div></div>
+                </div>
+            </div>
+
+            <div class="card">
                 <h3>Target Acquisition</h3>
                 <div class="input-group">
-                    <input type="text" id="targetDesc" placeholder="e.g., Person in red shirt...">
+                    <input type="text" id="targetDesc" placeholder="e.g., Person in red shirt..." disabled>
                     <button id="lockBtn" class="btn-primary" onclick="updateTarget()" disabled>Lock</button>
                 </div>
                 <div id="targetStatus" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 10px; word-break: break-all;">
@@ -289,12 +342,12 @@
                         <div class="stat-value" id="batVal">85%</div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-label">Speed</div>
-                        <div class="stat-value" id="speedVal">0.0 m/s</div>
+                        <div class="stat-label">Current Mode</div>
+                        <div class="stat-value" id="modeVal">--</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Distance</div>
-                        <div class="stat-value" id="distVal">-- m</div>
+                        <div class="stat-value" id="distVal">-- mm</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">CPU Load</div>
@@ -319,6 +372,13 @@
         const lockBtn = document.getElementById('lockBtn');
         const connectBtn = document.getElementById('connectBtn');
         const streamView = document.getElementById('streamView');
+        const targetInput = document.getElementById('targetDesc');
+        const modeAutoBtn = document.getElementById('modeAuto');
+        const modeManualBtn = document.getElementById('modeManual');
+        const dpadPanel = document.getElementById('dpadPanel');
+
+        let currentMode = "AUTO";
+        let robotConnected = false;
 
         function addLog(message, type = 'info') {
             const entry = document.createElement('div');
@@ -329,7 +389,6 @@
             logWindow.scrollTop = logWindow.scrollHeight;
         }
 
-        // --- Hooking up the RTSP Video Backend Feed ---
         async function connectRobot() {
             const ip = document.getElementById('robotIp').value;
             if(!ip) {
@@ -338,7 +397,7 @@
             }
 
             connectBtn.disabled = true;
-            addLog(`Requesting backend to lock RTSP stream: rtsp://${ip}:554/mjpeg/1`, "info");
+            addLog(`Contacting API Stream Proxy...`, "info");
 
             try {
                 const res = await fetch('/connect-rtsp', {
@@ -349,25 +408,109 @@
                 const data = await res.json();
                 
                 if (data.status === "connected") {
-                    // Force the img tag to point to our FastAPI live frame-forward stream loop
                     streamView.src = `/video-feed?token=${Math.random()}`;
-                    statusDot.className = 'dot connected';
-                    statusText.innerText = 'Connected';
+                    robotConnected = true;
+                    
+                    // Unlock mode and target components
+                    modeAutoBtn.disabled = false;
+                    modeManualBtn.disabled = false;
+                    targetInput.disabled = false;
                     lockBtn.disabled = false;
-                    document.getElementById('targetStatus').innerText = "System online. Standing by for target profile...";
-                    addLog("RTSP Stream attached and parsing frame chunks.", "info");
+                    
+                    setSystemMode("AUTO");
+                    document.getElementById('targetStatus').innerText = "System online. Standby for target locks...";
+                    addLog("Video stream pipeline locked and running.", "info");
                 } else {
-                    throw new Error("Target connection dropped");
+                    throw new Error();
                 }
             } catch(e) {
-                addLog("Failed to link RTSP feed. Verify Robot IP and port 554.", "error");
+                addLog("Stream connection timed out. Verify device port 554.", "error");
                 connectBtn.disabled = false;
             }
         }
 
-        // --- Target Extraction Action Loop ---
+        // --- Handle System Mode Transitions ---
+        async function setSystemMode(mode) {
+            if(!robotConnected) return;
+            try {
+                const res = await fetch('/set-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
+                const data = await res.json();
+                if(data.status === "success") {
+                    currentMode = data.mode;
+                    document.getElementById('modeVal').innerText = currentMode;
+                    
+                    if(currentMode === "AUTO") {
+                        modeAutoBtn.className = "btn-secondary active";
+                        modeManualBtn.className = "btn-secondary";
+                        dpadPanel.classList.remove('active');
+                        statusDot.className = 'dot connected';
+                        statusText.innerText = 'AI Track Mode';
+                        targetInput.disabled = false;
+                        lockBtn.disabled = false;
+                        addLog("Auto tracking enabled. Vision models active.", "info");
+                    } else {
+                        modeAutoBtn.className = "btn-secondary";
+                        modeManualBtn.className = "btn-secondary active";
+                        dpadPanel.classList.add('active');
+                        statusDot.className = 'dot manual';
+                        statusText.innerText = 'Manual Mode';
+                        targetInput.disabled = true;
+                        lockBtn.disabled = true;
+                        addLog("Manual Control override active. Press W/A/S/D to steer.", "warn");
+                    }
+                }
+            } catch(e) {
+                addLog("Could not switch system modes.", "error");
+            }
+        }
+
+        // --- Manual Driving Endpoint Interface ---
+        async function manualSteer(direction) {
+            if (currentMode !== "MANUAL" || !robotConnected) return;
+            try {
+                await fetch('/manual-drive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: direction })
+                });
+            } catch(e) {
+                addLog("Command delivery failure.", "error");
+            }
+        }
+
+        // --- Physical Keyboard Listeners (W,A,S,D & Arrows) ---
+        const activeKeys = new Set();
+        const keyMap = {
+            'KeyW': 'FORWARD', 'ArrowUp': 'FORWARD',
+            'KeyA': 'LEFT',    'ArrowLeft': 'LEFT',
+            'KeyS': 'BACKWARD','ArrowDown': 'BACKWARD',
+            'KeyD': 'RIGHT',   'ArrowRight': 'RIGHT'
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (currentMode !== "MANUAL" || !robotConnected || e.repeat) return;
+            if (keyMap[e.code]) {
+                activeKeys.add(e.code);
+                manualSteer(keyMap[e.code]);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (currentMode !== "MANUAL" || !robotConnected) return;
+            if (keyMap[e.code]) {
+                activeKeys.delete(e.code);
+                if (activeKeys.size === 0) {
+                    manualSteer('STOP');
+                }
+            }
+        });
+
         async function updateTarget() {
-            const desc = document.getElementById('targetDesc').value;
+            const desc = targetInput.value;
             if(!desc) {
                 addLog("Target string input required.", "warn");
                 return;
@@ -388,13 +531,12 @@
                 const data = await res.json();
                 
                 document.getElementById('targetStatus').innerText = `Tracking Profile: ${jsonToString(data.profile)}`;
-                document.getElementById('targetStatus').style.color = "var(--text-main)";
                 statusDot.className = 'dot connected';
-                statusText.innerText = 'Tracking Target';
-                addLog("Groq tracking models fully engaged.", "info");
+                statusText.innerText = 'AI Track Mode';
+                addLog("Target acquisition completed.", "info");
                 
             } catch (e) {
-                addLog("Failed to register target matrices with backend.", "error");
+                addLog("Failed to register target.", "error");
                 statusDot.className = 'dot connected';
                 statusText.innerText = 'Connected';
             } finally {
@@ -407,27 +549,30 @@
             return Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(', ');
         }
 
-        // --- Operational Emergency Signal Handling ---
         async function emergencyStop() {
-            addLog("!!! OVERRIDE DETECTED: TERMINATING WHEEL DRIVES !!!", "error");
-            document.getElementById('targetStatus').innerText = "EMERGENCY RESTRAINT INTERCEPT SYSTEM ACTIVE.";
-            document.getElementById('targetStatus').style.color = "var(--danger)";
+            addLog("!!! EMERGENCY ABORT DETECTED !!!", "error");
+            document.getElementById('targetStatus').innerText = "SYSTEM STOPPED.";
             
             try {
-                await fetch('/emergency-stop', { method: 'POST' });
-                addLog("Halt frames broadcast successfully to HiveMQ broker.", "warn");
+                const res = await fetch('/emergency-stop', { method: 'POST' });
+                const data = await res.json();
+                setSystemMode("MANUAL"); // Revert mode dynamically
+                addLog("Shutdown frames published.", "warn");
             } catch (e) {
-                addLog("Critical failure: Could not deliver halt instructions to HiveMQ cloud pipeline!", "error");
+                addLog("Critical delivery failure!", "error");
             }
         }
 
         function updateTelemetry() {
-            document.getElementById('batVal').innerText = `${Math.floor(82 + Math.random() * 10)}%`;
-            document.getElementById('speedVal').innerText = statusText.innerText === 'Tracking Target' ? `${(0.5 + Math.random() * 0.8).toFixed(1)} m/s` : '0.0 m/s';
-            document.getElementById('distVal').innerText = statusText.innerText === 'Tracking Target' ? `${(1.2 + Math.random() * 3).toFixed(1)} m` : '-- m';
-            document.getElementById('cpuVal').innerText = `${Math.floor(15 + Math.random() * 20)}%`;
+            document.getElementById('batVal').innerText = `${Math.floor(82 + Math.random() * 5)}%`;
+            document.getElementById('cpuVal').innerText = `${Math.floor(22 + Math.random() * 10)}%`;
+            
+            if (robotConnected) {
+                // Displays actual mock scaling metrics to dashboard layout
+                document.getElementById('distVal').innerText = statusText.innerText === 'AI Track Mode' ? `${Math.floor(350 + Math.random() * 100)} mm` : '-- mm';
+            }
         }
-        setInterval(updateTelemetry, 2000);
+        setInterval(updateTelemetry, 1000);
     </script>
 </body>
 </html>
