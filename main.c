@@ -5,7 +5,6 @@
 #include "esp_camera.h"
 #include <Wire.h>
 #include <Adafruit_VL53L0X.h>
-#include <esp_now.h>
 
 // --- ESP32-CAM Dedicated Safe Sensor Pins ---
 #define I2C_SDA_PIN   14
@@ -13,9 +12,10 @@
 #define SONIC_TRIG    13
 #define SONIC_ECHO    12
 
-// --- ESP32-C3 Receiver MAC Address ---
-// REPLACE THIS with your physical ESP32-C3's MAC Address
-uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+const unsigned long sonicTimeoutUs = 25000;
+const long sonicMinDistanceMm = 20;
+const long sonicMaxDistanceMm = 4000;
+const int sonicSampleCount = 3;
 
 // --- Camera Pin Definition Array ---
 #define PWDN_GPIO_NUM     32
@@ -38,26 +38,18 @@ uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 const char* ssid     = "Galaxy A12580F";
 const char* password = "isreal13";
 
-const char* mqtt_broker = "broker.hivemq.com";
+const char* mqtt_broker = "broker.emqx.io";
 const int mqtt_port     = 1883;
-const char* mqtt_topic  = "nodes/sentinel_alpha_99x2/hardware_control";
 const char* tele_topic  = "nodes/sentinel_alpha_99x2/telemetry";
 
 int quality = 12;
+bool laserReady = false;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 RTSPServer rtspServer;
 Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 TaskHandle_t videoTaskHandle = NULL;
-
-// Simplified ESP-NOW Data Structure (No Servo variables)
-typedef struct struct_message {
-    char drive[12];
-} struct_message;
-struct_message controlData;
-
-esp_now_peer_info_t peerInfo;
 
 bool setupCamera() {
   camera_config_t config;
@@ -106,36 +98,53 @@ bool setupCamera() {
   return true;
 }
 
-// Two-Pin Ultrasonic Distance Calculation
 long getUltrasonicDistanceMM() {
-  digitalWrite(SONIC_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(SONIC_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(SONIC_TRIG, LOW);
-  
-  long duration = pulseIn(SONIC_ECHO, HIGH, 30000); // 30ms timeout limit
-  if (duration == 0) return 9999;
-  return (duration * 0.343) / 2; // Returns distance in millimeters
-}
+  long samples[sonicSampleCount];
+  int validSamples = 0;
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  JsonDocument doc; 
-  DeserializationError error = deserializeJson(doc, payload, length);
-  if (!error) {
-    const char* drive = doc["drive"];
-    if (drive) {
-      strcpy(controlData.drive, drive);
-      esp_now_send(broadcastAddress, (uint8_t *) &controlData, sizeof(controlData));
+  for (int sampleIndex = 0; sampleIndex < sonicSampleCount; sampleIndex++) {
+    digitalWrite(SONIC_TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(SONIC_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(SONIC_TRIG, LOW);
+
+    unsigned long duration = pulseIn(SONIC_ECHO, HIGH, sonicTimeoutUs);
+    long distanceMm = (duration * 343L) / 2000L;
+    if (duration > 0 && distanceMm >= sonicMinDistanceMm && distanceMm <= sonicMaxDistanceMm) {
+      samples[validSamples++] = distanceMm;
+    }
+
+    if (sampleIndex < sonicSampleCount - 1) {
+      delay(30);
     }
   }
+
+  if (validSamples < 2) {
+    return -1;
+  }
+
+  for (int index = 1; index < validSamples; index++) {
+    long value = samples[index];
+    int sortedIndex = index - 1;
+    while (sortedIndex >= 0 && samples[sortedIndex] > value) {
+      samples[sortedIndex + 1] = samples[sortedIndex];
+      sortedIndex--;
+    }
+    samples[sortedIndex + 1] = value;
+  }
+
+  if (validSamples == 2) {
+    return (samples[0] + samples[1]) / 2;
+  }
+  return samples[validSamples / 2];
 }
 
 void reconnectMQTT() {
   while (!mqtt_client.connected()) {
     String clientId = "ESP32CAM-SensorNode-" + String(random(0xffff), HEX);
     if (mqtt_client.connect(clientId.c_str())) {
-      mqtt_client.subscribe(mqtt_topic);
+      Serial.println("MQTT connected for telemetry publishing.");
     } else {
       delay(2000);
     }
@@ -165,15 +174,18 @@ void networkTask(void* pvParameters) {
     if ((xTaskGetTickCount() - lastTelemetryTime) >= pdMS_TO_TICKS(200)) {
       lastTelemetryTime = xTaskGetTickCount();
       
-      VL53L0X_RangingMeasurementData_t measure;
-      lox.getRangingMeasurement(&measure, false);
-      
-      long laser_dist = (measure.RangeStatus != 4) ? measure.RangeMilliMeter : -1;
+      long laser_dist = -1;
+      if (laserReady) {
+        VL53L0X_RangingMeasurementData_t measure;
+        lox.getRangingMeasurement(&measure, false);
+        laser_dist = (measure.RangeStatus != 4) ? measure.RangeMilliMeter : -1;
+      }
       long sonic_dist = getUltrasonicDistanceMM();
       
       JsonDocument teleDoc;
       teleDoc["laser_mm"] = laser_dist;
       teleDoc["sonic_mm"] = sonic_dist;
+      teleDoc["wifi_rssi"] = WiFi.RSSI();
       
       char buffer[128];
       serializeJson(teleDoc, buffer);
@@ -195,23 +207,12 @@ void setup() {
   Serial.print("WiFi Connected. IP: ");
   Serial.println(WiFi.localIP());
 
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
-
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add ESP-NOW Peer");
-    return;
-  }
-
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   if (!lox.begin(0x29, false, &Wire)) {
     Serial.println("VL53L0X Laser not found on I2C bus!");
-    while(1);
+    laserReady = false;
+  } else {
+    laserReady = true;
   }
 
   setupCamera();
@@ -220,7 +221,6 @@ void setup() {
   
   rtspServer.init();
   mqtt_client.setServer(mqtt_broker, mqtt_port);
-  mqtt_client.setCallback(mqttCallback);
 
   xTaskCreate(sendVideo, "VideoTask", 8192, NULL, 9, &videoTaskHandle);
   xTaskCreate(networkTask, "NetworkTask", 4096, NULL, 5, NULL);
@@ -229,3 +229,9 @@ void setup() {
 void loop() {
   vTaskDelete(NULL); 
 }
+
+
+
+
+
+//20d84caac4cb36d7af1e5722

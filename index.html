@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Follower Robot Control</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2321a67f'/%3E%3Cpath d='M18 28h28v20H18zM25 20h14v8H25z' fill='%23101418'/%3E%3Ccircle cx='26' cy='38' r='4' fill='%23f4f7fb'/%3E%3Ccircle cx='38' cy='38' r='4' fill='%23f4f7fb'/%3E%3C/svg%3E">
     <style>
         :root {
             --bg: #101418;
@@ -580,6 +581,7 @@
         let mqttReady = false;
         let taskClient = null;
         const activeKeys = new Set();
+        const mqttWebSocketUrl = "__MQTT_WS_URL__";
         const taskTopic = "nodes/__ROBOT_ID__/tasks";
 
         function addLog(message, type = "info") {
@@ -609,7 +611,14 @@
         }
 
         function connectTaskBroker() {
-            taskClient = mqtt.connect("__MQTT_WS_URL__", {
+            // Placeholders are replaced by the FastAPI route. Avoid calling MQTT.js
+            // with one when this file is opened directly from disk.
+            if (!/^wss?:\/\//i.test(mqttWebSocketUrl)) {
+                addLog("Open this dashboard through the FastAPI server (http://localhost:8000), not as a local file.", "error");
+                return;
+            }
+
+            taskClient = mqtt.connect(mqttWebSocketUrl, {
                 clientId: `FollowerDashboard_${Math.random().toString(16).slice(2)}`,
                 clean: true,
                 reconnectPeriod: 1500

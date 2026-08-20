@@ -1,5 +1,12 @@
 #include <WiFi.h>
-#include <esp_now.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+const char* wifiSsid = "REPLACE_WITH_WIFI_SSID";
+const char* wifiPassword = "REPLACE_WITH_WIFI_PASSWORD";
+const char* mqttBroker = "broker.emqx.io";
+const int mqttPort = 1883;
+const char* controlTopic = "nodes/sentinel_alpha_99x2/hardware_control";
 
 // --- BTS7960 Driver Pins on ESP32-C3 ---
 #define MOTOR_L_RPWM  4
@@ -10,15 +17,21 @@
 // --- PWM Configurations ---
 const int motorFreq = 20000; 
 const int motorRes  = 8;     
-const int driveSpeed = 180;  
+const int defaultDriveSpeed = 180;
+const unsigned long commandTimeoutMs = 700;
 
-// Simplified Payload Structure (No Servo variables)
-typedef struct struct_message {
-    char drive[12];
-} struct_message;
-struct_message incomingData;
+unsigned long lastCommandAt = 0;
+unsigned long lastMqttAttemptAt = 0;
+char lastAction[12] = "STOP";
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
-void processSpatialAction(const char* action) {
+void processSpatialAction(const char* action, int requestedSpeed = -1) {
+  int driveSpeed = requestedSpeed >= 0 ? constrain(requestedSpeed, 0, 255) : defaultDriveSpeed;
+  strncpy(lastAction, action, sizeof(lastAction) - 1);
+  lastAction[sizeof(lastAction) - 1] = '\0';
+  lastCommandAt = millis();
+
   if (strcmp(action, "FORWARD") == 0) {
     ledcWrite(MOTOR_L_RPWM, driveSpeed); ledcWrite(MOTOR_L_LPWM, 0);
     ledcWrite(MOTOR_R_RPWM, driveSpeed); ledcWrite(MOTOR_R_LPWM, 0);
@@ -38,9 +51,46 @@ void processSpatialAction(const char* action) {
   }
 }
 
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingDataRaw, int len) {
-  memcpy(&incomingData, incomingDataRaw, sizeof(incomingData));
-  processSpatialAction(incomingData.drive);
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, controlTopic) != 0) {
+    return;
+  }
+
+  JsonDocument doc;
+  if (deserializeJson(doc, payload, length)) {
+    processSpatialAction("STOP");
+    return;
+  }
+
+  const char* drive = doc["drive"];
+  int speed = doc["speed"] | defaultDriveSpeed;
+  if (drive == NULL) {
+    processSpatialAction("STOP");
+    return;
+  }
+
+  processSpatialAction(drive, speed);
+}
+
+void maintainMqttConnection() {
+  if (mqttClient.connected()) {
+    return;
+  }
+
+  if (millis() - lastMqttAttemptAt < 2000) {
+    return;
+  }
+
+  lastMqttAttemptAt = millis();
+  processSpatialAction("STOP");
+  String clientId = "ESP32C3-MotorNode-" + WiFi.macAddress();
+  clientId.replace(":", "");
+  if (mqttClient.connect(clientId.c_str())) {
+    mqttClient.subscribe(controlTopic);
+    Serial.println("MQTT control connection established.");
+  } else {
+    Serial.println("MQTT connection failed; motors stopped.");
+  }
 }
 
 void setup() {
@@ -55,17 +105,24 @@ void setup() {
   processSpatialAction("STOP");
 
   WiFi.mode(WIFI_STA);
-  Serial.print("ESP32-C3 MAC Address: ");
+  WiFi.begin(wifiSsid, wifiPassword);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  Serial.print("WiFi connected. ESP32-C3 MAC Address: ");
   Serial.println(WiFi.macAddress());
 
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  }
-  
-  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+  mqttClient.setServer(mqttBroker, mqttPort);
+  mqttClient.setCallback(mqttCallback);
+  maintainMqttConnection();
 }
 
 void loop() {
+  maintainMqttConnection();
+  mqttClient.loop();
+
+  if (strcmp(lastAction, "STOP") != 0 && millis() - lastCommandAt > commandTimeoutMs) {
+    processSpatialAction("STOP");
+  }
   delay(100);
 }
