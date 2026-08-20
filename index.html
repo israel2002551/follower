@@ -3,576 +3,772 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI & Manual Robot Control Panel</title>
+    <title>Follower Robot Control</title>
     <style>
         :root {
-            --bg-body: #0f172a;
-            --bg-panel: #1e293b;
-            --bg-input: #334155;
-            --accent: #38bdf8;
-            --accent-hover: #0ea5e9;
-            --success: #22c55e;
-            --danger: #ef4444;
-            --warning: #eab308;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --border-radius: 8px;
+            --bg: #101418;
+            --panel: #171d23;
+            --panel-soft: #1f2730;
+            --ink: #f4f7fb;
+            --muted: #9aa7b5;
+            --line: #2b3540;
+            --accent: #4cc9a6;
+            --accent-strong: #21a67f;
+            --warn: #f3b23f;
+            --danger: #ee5b5b;
+            --info: #5ca8ff;
+            --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * { box-sizing: border-box; }
 
         body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-body);
-            color: var(--text-main);
+            margin: 0;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        button, input {
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            cursor: pointer;
+            min-height: 42px;
+            transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.48;
+        }
+
+        .shell {
+            width: min(1480px, 100%);
+            margin: 0 auto;
+            padding: 18px;
         }
 
         header {
-            background: var(--bg-panel);
-            padding: 1rem 2rem;
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            gap: 16px;
+            padding: 10px 0 18px;
         }
 
-        .logo {
+        .brand {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 1.25rem;
-            font-weight: 600;
+            gap: 12px;
+            min-width: 0;
         }
 
-        .status-indicator {
-            display: flex;
+        .mark {
+            width: 40px;
+            height: 40px;
+            display: grid;
+            place-items: center;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel-soft);
+            color: var(--accent);
+            font-weight: 800;
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        .subtle {
+            color: var(--muted);
+            font-size: 0.84rem;
+            margin-top: 3px;
+        }
+
+        .status-pill {
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-            color: var(--text-muted);
+            gap: 9px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--panel);
+            padding: 8px 12px;
+            white-space: nowrap;
+            color: var(--muted);
         }
 
         .dot {
             width: 10px;
             height: 10px;
-            border-radius: 50%;
+            border-radius: 99px;
             background: var(--danger);
-            box-shadow: 0 0 10px var(--danger);
-            transition: all 0.3s;
+            box-shadow: 0 0 0 4px rgba(238, 91, 91, 0.14);
         }
 
-        .dot.connected { background: var(--success); box-shadow: 0 0 10px var(--success); }
-        .dot.manual { background: var(--warning); box-shadow: 0 0 10px var(--warning); }
-        .dot.locking { background: var(--warning); box-shadow: 0 0 10px var(--warning); animation: pulse 1s infinite; }
+        .dot.ready {
+            background: var(--accent);
+            box-shadow: 0 0 0 4px rgba(76, 201, 166, 0.14);
+        }
 
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        .dot.manual {
+            background: var(--warn);
+            box-shadow: 0 0 0 4px rgba(243, 178, 63, 0.15);
         }
 
         main {
-            flex: 1;
             display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 20px;
-            padding: 20px;
-            max-width: 1600px;
-            margin: 0 auto;
-            width: 100%;
+            grid-template-columns: minmax(0, 1fr) 390px;
+            gap: 18px;
+            align-items: start;
         }
 
-        .video-container {
-            background: #000;
-            border-radius: var(--border-radius);
+        .stage {
+            background: #050607;
+            border: 1px solid var(--line);
+            border-radius: 8px;
             overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        .video-wrap {
             position: relative;
-            aspect-ratio: 4/3;
-            border: 2px solid var(--accent);
-            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+            aspect-ratio: 4 / 3;
+            min-height: 360px;
         }
 
         #streamView {
             width: 100%;
             height: 100%;
+            display: block;
             object-fit: cover;
         }
 
-        .video-overlay {
+        .empty-feed {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.6);
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            color: var(--accent);
-            font-family: monospace;
-        }
-
-        .controls-panel {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .card {
-            background: var(--bg-panel);
-            padding: 1.5rem;
-            border-radius: var(--border-radius);
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .card h3 {
-            margin-bottom: 1rem;
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            padding-bottom: 0.5rem;
-        }
-
-        .mode-selector {
+            inset: 0;
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
+            place-items: center;
+            color: var(--muted);
+            text-align: center;
+            padding: 24px;
         }
 
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+        .reticle {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
         }
 
-        input[type="text"] {
-            flex: 1;
-            padding: 10px;
-            background: var(--bg-input);
-            border: 1px solid transparent;
-            border-radius: 6px;
-            color: white;
-            font-size: 0.95rem;
-            transition: border 0.2s;
+        .reticle::before,
+        .reticle::after {
+            content: "";
+            position: absolute;
+            background: rgba(244, 247, 251, 0.24);
         }
 
-        input[type="text"]:focus {
-            outline: none;
-            border-color: var(--accent);
+        .reticle::before {
+            left: 50%;
+            top: 12%;
+            bottom: 12%;
+            width: 1px;
         }
 
-        button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .reticle::after {
+            top: 50%;
+            left: 12%;
+            right: 12%;
+            height: 1px;
+        }
+
+        .feed-bar {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
         }
 
-        .btn-primary { background: var(--accent); color: #0f172a; }
-        .btn-primary:hover { background: var(--accent-hover); }
-        .btn-primary:disabled { background: var(--bg-input); color: var(--text-muted); cursor: not-allowed; }
-
-        .btn-secondary { background: var(--bg-input); color: var(--text-main); }
-        .btn-secondary:hover { background: #475569; }
-        .btn-secondary.active { background: var(--accent); color: #0f172a; }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-            width: 100%;
-            padding: 15px;
-            font-size: 1.1rem;
-            margin-top: 10px;
+        .feed-chip {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            background: rgba(10, 12, 14, 0.76);
+            backdrop-filter: blur(10px);
+            padding: 9px 10px;
+            min-width: 0;
         }
-        .btn-danger:hover { background: #dc2626; }
 
-        /* --- D-PAD Grid CSS Layout --- */
-        .dpad-container {
+        .feed-chip span {
+            display: block;
+            color: var(--muted);
+            font-size: 0.72rem;
+            margin-bottom: 3px;
+        }
+
+        .feed-chip strong {
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.95rem;
+        }
+
+        .side {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            gap: 10px;
-            max-width: 220px;
-            margin: 0 auto;
-            opacity: 0.4;
-            pointer-events: none;
-            transition: all 0.3s ease;
+            gap: 12px;
         }
 
-        .dpad-container.active {
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+            padding: 14px;
+        }
+
+        .panel h2 {
+            margin: 0 0 12px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .row {
+            display: flex;
+            gap: 9px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            min-width: 0;
+            min-height: 42px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel-soft);
+            color: var(--ink);
+            padding: 0 12px;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(76, 201, 166, 0.14);
+        }
+
+        .primary {
+            background: var(--accent);
+            color: #06110e;
+            font-weight: 800;
+            padding: 0 16px;
+        }
+
+        .primary:hover {
+            background: var(--accent-strong);
+        }
+
+        .secondary {
+            background: var(--panel-soft);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            font-weight: 700;
+            padding: 0 12px;
+        }
+
+        .secondary.active {
+            background: rgba(76, 201, 166, 0.16);
+            color: var(--accent);
+            border-color: rgba(76, 201, 166, 0.5);
+        }
+
+        .danger {
+            width: 100%;
+            background: var(--danger);
+            color: #fff;
+            font-weight: 900;
+            letter-spacing: 0.03em;
+            margin-top: 12px;
+        }
+
+        .mode-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 9px;
+        }
+
+        .dpad {
+            width: min(230px, 100%);
+            margin: 4px auto 0;
+            display: grid;
+            grid-template-columns: repeat(3, 62px);
+            grid-template-rows: repeat(3, 62px);
+            justify-content: center;
+            gap: 9px;
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        .dpad.active {
             opacity: 1;
             pointer-events: auto;
         }
 
-        .dpad-btn {
-            background: var(--bg-input);
-            color: white;
-            font-size: 1.5rem;
-            height: 60px;
-            border-radius: 8px;
-            user-select: none;
+        .dpad button {
+            background: var(--panel-soft);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            font-size: 1rem;
+            font-weight: 900;
+            padding: 0;
         }
-        .dpad-btn:active, .dpad-btn.pressed {
+
+        .dpad button.pressed {
             background: var(--accent);
-            color: #0f172a;
+            color: #06110e;
         }
-        .dpad-btn.stop-btn { background: #475569; }
-        .dpad-btn.stop-btn:active { background: var(--danger); color: white; }
 
-        .telemetry-grid {
+        .dpad .stop {
+            background: rgba(238, 91, 91, 0.14);
+            color: #ffb7b7;
+        }
+
+        .metrics {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 9px;
         }
 
-        .stat-item {
-            background: var(--bg-body);
+        .metric {
+            background: var(--panel-soft);
+            border: 1px solid var(--line);
+            border-radius: 8px;
             padding: 10px;
-            border-radius: 6px;
-            text-align: center;
+            min-width: 0;
         }
 
-        .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; }
-        .stat-value { font-size: 1.2rem; font-weight: bold; color: var(--accent); font-family: monospace; }
+        .metric span {
+            display: block;
+            color: var(--muted);
+            font-size: 0.72rem;
+            margin-bottom: 5px;
+        }
 
-        .log-window {
-            background: #000;
-            height: 120px;
-            overflow-y: auto;
+        .metric strong {
+            display: block;
+            min-height: 1.25rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            color: var(--ink);
+        }
+
+        .profile {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #0d1115;
+            color: var(--muted);
             padding: 10px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.8rem;
-            border-radius: 4px;
-            border: 1px solid #333;
+            min-height: 58px;
+            overflow-wrap: anywhere;
+            font-size: 0.88rem;
+            line-height: 1.45;
         }
 
-        .log-entry { margin-bottom: 5px; }
-        .log-info { color: #4ade80; }
-        .log-warn { color: #facc15; }
-        .log-error { color: #f87171; }
+        .log {
+            height: 132px;
+            overflow: auto;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #090b0e;
+            padding: 9px;
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
 
-        @media (max-width: 900px) {
-            main { grid-template-columns: 1fr; }
-            .video-container { aspect-ratio: 16/9; }
+        .log div {
+            margin-bottom: 5px;
+        }
+
+        .log .info { color: #96d8c4; }
+        .log .warn { color: #ffd58a; }
+        .log .error { color: #ffaaa8; }
+
+        @media (max-width: 980px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+
+            .video-wrap {
+                min-height: 280px;
+                aspect-ratio: 16 / 9;
+            }
+        }
+
+        @media (max-width: 620px) {
+            .shell {
+                padding: 12px;
+            }
+
+            header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .feed-bar,
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .row {
+                flex-direction: column;
+            }
+
+            .primary,
+            .secondary {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-
-    <header>
-        <div class="logo">
-            <span>🤖</span>
-            <span>Sentinel Hybrid Control Platform</span>
-        </div>
-        <div class="status-indicator">
-            <div id="statusDot" class="dot"></div>
-            <span id="statusText">Disconnected</span>
-        </div>
-    </header>
-
-    <main>
-        <section class="video-section">
-            <div class="video-container">
-                <img id="streamView" src="" alt="Awaiting Robot Link..."/>
-                <div class="video-overlay">LIVE RTSP STREAM ENGINE</div>
-            </div>
-        </section>
-
-        <aside class="controls-panel">
-            <div class="card">
-                <h3>System Link</h3>
-                <div class="input-group">
-                    <input type="text" id="robotIp" placeholder="e.g., 192.168.1.50">
-                    <button id="connectBtn" class="btn-primary" onclick="connectRobot()">Connect</button>
+    <div class="shell">
+        <header>
+            <div class="brand">
+                <div class="mark">FR</div>
+                <div>
+                    <h1>Follower Robot Control</h1>
+                    <div class="subtle">Vision lock, distance hold, and manual override</div>
                 </div>
             </div>
-
-            <div class="card">
-                <h3>Operational Mode</h3>
-                <div class="mode-selector">
-                    <button id="modeAuto" class="btn-secondary active" onclick="setSystemMode('AUTO')" disabled>AI Track</button>
-                    <button id="modeManual" class="btn-secondary" onclick="setSystemMode('MANUAL')" disabled>Manual</button>
-                </div>
+            <div class="status-pill">
+                <span id="statusDot" class="dot"></span>
+                <span id="statusText">Disconnected</span>
             </div>
+        </header>
 
-            <div class="card">
-                <h3>Manual Steer (W,A,S,D / Keys)</h3>
-                <div class="dpad-container" id="dpadPanel">
-                    <div></div>
-                    <button class="dpad-btn" onmousedown="manualSteer('FORWARD')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('FORWARD')" ontouchend="manualSteer('STOP')">▲</button>
-                    <div></div>
-                    
-                    <button class="dpad-btn" onmousedown="manualSteer('LEFT')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('LEFT')" ontouchend="manualSteer('STOP')">◀</button>
-                    <button class="dpad-btn stop-btn" onclick="manualSteer('STOP')">■</button>
-                    <button class="dpad-btn" onmousedown="manualSteer('RIGHT')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('RIGHT')" ontouchend="manualSteer('STOP')">▶</button>
-                    
-                    <div></div>
-                    <button class="dpad-btn" onmousedown="manualSteer('BACKWARD')" onmouseup="manualSteer('STOP')" onmouseleave="manualSteer('STOP')" ontouchstart="manualSteer('BACKWARD')" ontouchend="manualSteer('STOP')">▼</button>
-                    <div></div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h3>Target Acquisition</h3>
-                <div class="input-group">
-                    <input type="text" id="targetDesc" placeholder="e.g., Person in red shirt..." disabled>
-                    <button id="lockBtn" class="btn-primary" onclick="updateTarget()" disabled>Lock</button>
-                </div>
-                <div id="targetStatus" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 10px; word-break: break-all;">
-                    Connect to robot to begin tracking.
-                </div>
-                <button class="btn-danger" onclick="emergencyStop()">⚠️ EMERGENCY STOP</button>
-            </div>
-
-            <div class="card">
-                <h3>Telemetry</h3>
-                <div class="telemetry-grid">
-                    <div class="stat-item">
-                        <div class="stat-label">Battery</div>
-                        <div class="stat-value" id="batVal">85%</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Current Mode</div>
-                        <div class="stat-value" id="modeVal">--</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Distance</div>
-                        <div class="stat-value" id="distVal">-- mm</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">CPU Load</div>
-                        <div class="stat-value" id="cpuVal">12%</div>
+        <main>
+            <section class="stage">
+                <div class="video-wrap">
+                    <div class="empty-feed">Video stays on the server. YOLO processes the RTSP camera locally and publishes only control commands.</div>
+                    <div class="feed-bar">
+                        <div class="feed-chip"><span>Drive</span><strong id="driveChip">STOP</strong></div>
+                        <div class="feed-chip"><span>Distance</span><strong id="distanceChip">--</strong></div>
+                        <div class="feed-chip"><span>Target</span><strong id="targetChip">No visual lock</strong></div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="card">
-                <h3>System Logs</h3>
-                <div id="logWindow" class="log-window">
-                    <div class="log-entry log-info">[SYSTEM] Ready. Connect to robot IP.</div>
-                </div>
-            </div>
-        </aside>
-    </main>
+            <aside class="side">
+                <section class="panel">
+                    <h2>Robot Link</h2>
+                    <div class="row">
+                        <input id="robotIp" type="text" placeholder="192.168.1.50" autocomplete="off">
+                        <button id="connectBtn" class="primary">Connect</button>
+                    </div>
+                </section>
 
+                <section class="panel">
+                    <h2>Mode</h2>
+                    <div class="mode-grid">
+                        <button id="modeAuto" class="secondary active" disabled>Auto Follow</button>
+                        <button id="modeManual" class="secondary" disabled>Manual</button>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <h2>Target Lock</h2>
+                    <div class="row">
+                        <input id="targetDesc" type="text" value="person" readonly disabled>
+                        <button id="lockBtn" class="primary" disabled>Lock</button>
+                    </div>
+                    <div id="targetProfile" class="profile">Connect to the robot before setting a target.</div>
+                    <button id="stopBtn" class="danger">Emergency Stop</button>
+                </section>
+
+                <section class="panel">
+                    <h2>Manual Drive</h2>
+                    <div id="dpad" class="dpad">
+                        <span></span>
+                        <button data-drive="FORWARD" aria-label="Forward">UP</button>
+                        <span></span>
+                        <button data-drive="LEFT" aria-label="Left">LT</button>
+                        <button class="stop" data-drive="STOP" aria-label="Stop">STOP</button>
+                        <button data-drive="RIGHT" aria-label="Right">RT</button>
+                        <span></span>
+                        <button data-drive="BACKWARD" aria-label="Backward">DN</button>
+                        <span></span>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <h2>Live State</h2>
+                    <div class="metrics">
+                        <div class="metric"><span>Mode</span><strong id="modeVal">--</strong></div>
+                        <div class="metric"><span>MQTT</span><strong id="mqttVal">--</strong></div>
+                        <div class="metric"><span>Last command</span><strong id="cmdVal">STOP</strong></div>
+                        <div class="metric"><span>Laser</span><strong id="laserVal">--</strong></div>
+                        <div class="metric"><span>Ultrasonic</span><strong id="sonicVal">--</strong></div>
+                        <div class="metric"><span>Front clearance</span><strong id="clearanceVal">--</strong></div>
+                        <div class="metric"><span>Vision confidence</span><strong id="confVal">--</strong></div>
+                        <div class="metric"><span>Reason</span><strong id="reasonVal">Waiting</strong></div>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <h2>Event Log</h2>
+                    <div id="logWindow" class="log"></div>
+                </section>
+            </aside>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
     <script>
-        const logWindow = document.getElementById('logWindow');
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const lockBtn = document.getElementById('lockBtn');
-        const connectBtn = document.getElementById('connectBtn');
-        const streamView = document.getElementById('streamView');
-        const targetInput = document.getElementById('targetDesc');
-        const modeAutoBtn = document.getElementById('modeAuto');
-        const modeManualBtn = document.getElementById('modeManual');
-        const dpadPanel = document.getElementById('dpadPanel');
+        const els = {
+            connectBtn: document.getElementById("connectBtn"),
+            robotIp: document.getElementById("robotIp"),
+            statusDot: document.getElementById("statusDot"),
+            statusText: document.getElementById("statusText"),
+            modeAuto: document.getElementById("modeAuto"),
+            modeManual: document.getElementById("modeManual"),
+            targetDesc: document.getElementById("targetDesc"),
+            lockBtn: document.getElementById("lockBtn"),
+            stopBtn: document.getElementById("stopBtn"),
+            dpad: document.getElementById("dpad"),
+            targetProfile: document.getElementById("targetProfile"),
+            logWindow: document.getElementById("logWindow"),
+            driveChip: document.getElementById("driveChip"),
+            distanceChip: document.getElementById("distanceChip"),
+            targetChip: document.getElementById("targetChip"),
+            modeVal: document.getElementById("modeVal"),
+            mqttVal: document.getElementById("mqttVal"),
+            cmdVal: document.getElementById("cmdVal"),
+            laserVal: document.getElementById("laserVal"),
+            sonicVal: document.getElementById("sonicVal"),
+            clearanceVal: document.getElementById("clearanceVal"),
+            confVal: document.getElementById("confVal"),
+            reasonVal: document.getElementById("reasonVal")
+        };
 
-        let currentMode = "AUTO";
+        const keyMap = {
+            KeyW: "FORWARD",
+            ArrowUp: "FORWARD",
+            KeyA: "LEFT",
+            ArrowLeft: "LEFT",
+            KeyS: "BACKWARD",
+            ArrowDown: "BACKWARD",
+            KeyD: "RIGHT",
+            ArrowRight: "RIGHT"
+        };
+
         let robotConnected = false;
+        let currentMode = "AUTO";
+        let mqttReady = false;
+        let taskClient = null;
+        const activeKeys = new Set();
+        const taskTopic = "nodes/__ROBOT_ID__/tasks";
 
-        function addLog(message, type = 'info') {
-            const entry = document.createElement('div');
-            entry.className = `log-entry log-${type}`;
-            const time = new Date().toLocaleTimeString();
-            entry.innerText = `[${time}] ${message}`;
-            logWindow.appendChild(entry);
-            logWindow.scrollTop = logWindow.scrollHeight;
+        function addLog(message, type = "info") {
+            const row = document.createElement("div");
+            row.className = type;
+            row.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            els.logWindow.appendChild(row);
+            els.logWindow.scrollTop = els.logWindow.scrollHeight;
+        }
+
+        function formatMM(value) {
+            return Number.isFinite(Number(value)) ? `${Math.round(Number(value))} mm` : "--";
+        }
+
+        function formatProfile(profile) {
+            if (!profile || Object.keys(profile).length === 0) return "No target profile set.";
+            return Object.entries(profile).map(([key, value]) => `${key}: ${value}`).join(", ");
+        }
+
+        function publishTask(task) {
+            if (!mqttReady || !taskClient) {
+                addLog("MQTT task connection is not ready.", "error");
+                return false;
+            }
+            taskClient.publish(taskTopic, JSON.stringify(task), { qos: 1 });
+            return true;
+        }
+
+        function connectTaskBroker() {
+            taskClient = mqtt.connect("__MQTT_WS_URL__", {
+                clientId: `FollowerDashboard_${Math.random().toString(16).slice(2)}`,
+                clean: true,
+                reconnectPeriod: 1500
+            });
+            taskClient.on("connect", () => {
+                mqttReady = true;
+                addLog("MQTT task channel connected.", "info");
+                els.connectBtn.disabled = false;
+            });
+            taskClient.on("reconnect", () => { mqttReady = false; });
+            taskClient.on("offline", () => { mqttReady = false; });
+            taskClient.on("error", () => {
+                mqttReady = false;
+                addLog("MQTT task channel failed. Check MQTT_WS_URL.", "error");
+            });
         }
 
         async function connectRobot() {
-            const ip = document.getElementById('robotIp').value;
-            if(!ip) {
-                addLog("Please enter the Robot's IP address.", "warn");
+            const ip = els.robotIp.value.trim();
+            if (!ip) {
+                addLog("Enter the robot camera IP address.", "warn");
                 return;
             }
 
-            connectBtn.disabled = true;
-            addLog(`Contacting API Stream Proxy...`, "info");
-
-            try {
-                const res = await fetch('/connect-rtsp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip_address: ip })
-                });
-                const data = await res.json();
-                
-                if (data.status === "connected") {
-                    streamView.src = `/video-feed?token=${Math.random()}`;
-                    robotConnected = true;
-                    
-                    // Unlock mode and target components
-                    modeAutoBtn.disabled = false;
-                    modeManualBtn.disabled = false;
-                    targetInput.disabled = false;
-                    lockBtn.disabled = false;
-                    
-                    setSystemMode("AUTO");
-                    document.getElementById('targetStatus').innerText = "System online. Standby for target locks...";
-                    addLog("Video stream pipeline locked and running.", "info");
-                } else {
-                    throw new Error();
-                }
-            } catch(e) {
-                addLog("Stream connection timed out. Verify device port 554.", "error");
-                connectBtn.disabled = false;
+            if (publishTask({ task: "connect_camera", ip_address: ip })) {
+                els.connectBtn.disabled = true;
+                addLog("Camera task sent; the server will process RTSP locally.", "info");
             }
         }
 
-        // --- Handle System Mode Transitions ---
         async function setSystemMode(mode) {
-            if(!robotConnected) return;
-            try {
-                const res = await fetch('/set-mode', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mode: mode })
-                });
-                const data = await res.json();
-                if(data.status === "success") {
-                    currentMode = data.mode;
-                    document.getElementById('modeVal').innerText = currentMode;
-                    
-                    if(currentMode === "AUTO") {
-                        modeAutoBtn.className = "btn-secondary active";
-                        modeManualBtn.className = "btn-secondary";
-                        dpadPanel.classList.remove('active');
-                        statusDot.className = 'dot connected';
-                        statusText.innerText = 'AI Track Mode';
-                        targetInput.disabled = false;
-                        lockBtn.disabled = false;
-                        addLog("Auto tracking enabled. Vision models active.", "info");
-                    } else {
-                        modeAutoBtn.className = "btn-secondary";
-                        modeManualBtn.className = "btn-secondary active";
-                        dpadPanel.classList.add('active');
-                        statusDot.className = 'dot manual';
-                        statusText.innerText = 'Manual Mode';
-                        targetInput.disabled = true;
-                        lockBtn.disabled = true;
-                        addLog("Manual Control override active. Press W/A/S/D to steer.", "warn");
-                    }
-                }
-            } catch(e) {
-                addLog("Could not switch system modes.", "error");
-            }
+            if (!robotConnected) return;
+            if (!publishTask({ task: "set_mode", mode })) return;
+            currentMode = mode;
+            renderMode();
+            addLog(`${currentMode} mode enabled.`, currentMode === "MANUAL" ? "warn" : "info");
         }
 
-        // --- Manual Driving Endpoint Interface ---
-        async function manualSteer(direction) {
-            if (currentMode !== "MANUAL" || !robotConnected) return;
-            try {
-                await fetch('/manual-drive', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: direction })
-                });
-            } catch(e) {
-                addLog("Command delivery failure.", "error");
-            }
+        function renderMode() {
+            els.modeAuto.classList.toggle("active", currentMode === "AUTO");
+            els.modeManual.classList.toggle("active", currentMode === "MANUAL");
+            els.dpad.classList.toggle("active", currentMode === "MANUAL");
+            els.targetDesc.disabled = !robotConnected || currentMode !== "AUTO";
+            els.lockBtn.disabled = !robotConnected || currentMode !== "AUTO";
         }
 
-        // --- Physical Keyboard Listeners (W,A,S,D & Arrows) ---
-        const activeKeys = new Set();
-        const keyMap = {
-            'KeyW': 'FORWARD', 'ArrowUp': 'FORWARD',
-            'KeyA': 'LEFT',    'ArrowLeft': 'LEFT',
-            'KeyS': 'BACKWARD','ArrowDown': 'BACKWARD',
-            'KeyD': 'RIGHT',   'ArrowRight': 'RIGHT'
-        };
-
-        window.addEventListener('keydown', (e) => {
-            if (currentMode !== "MANUAL" || !robotConnected || e.repeat) return;
-            if (keyMap[e.code]) {
-                activeKeys.add(e.code);
-                manualSteer(keyMap[e.code]);
+        async function manualSteer(action) {
+            if (!robotConnected || currentMode !== "MANUAL") return;
+            try {
+                publishTask({ task: "manual_drive", action });
+            } catch (err) {
+                addLog("Manual command failed.", "error");
             }
-        });
-
-        window.addEventListener('keyup', (e) => {
-            if (currentMode !== "MANUAL" || !robotConnected) return;
-            if (keyMap[e.code]) {
-                activeKeys.delete(e.code);
-                if (activeKeys.size === 0) {
-                    manualSteer('STOP');
-                }
-            }
-        });
+        }
 
         async function updateTarget() {
-            const desc = targetInput.value;
-            if(!desc) {
-                addLog("Target string input required.", "warn");
+            const description = els.targetDesc.value.trim();
+            if (!description) {
+                addLog("Describe the person to follow before locking.", "warn");
                 return;
             }
 
-            lockBtn.disabled = true;
-            lockBtn.innerText = "Locking...";
-            statusDot.className = 'dot locking';
-            statusText.innerText = 'Acquiring Target...';
-            addLog(`Orchestrator building profile signature for: "${desc}"`, "info");
-
-            try {
-                const res = await fetch('/set-target', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ description: desc })
-                });
-                const data = await res.json();
-                
-                document.getElementById('targetStatus').innerText = `Tracking Profile: ${jsonToString(data.profile)}`;
-                statusDot.className = 'dot connected';
-                statusText.innerText = 'AI Track Mode';
-                addLog("Target acquisition completed.", "info");
-                
-            } catch (e) {
-                addLog("Failed to register target.", "error");
-                statusDot.className = 'dot connected';
-                statusText.innerText = 'Connected';
-            } finally {
-                lockBtn.disabled = false;
-                lockBtn.innerText = "Lock";
+            if (publishTask({ task: "set_target", description })) {
+                addLog("YOLO person-following task sent.", "info");
             }
-        }
-
-        function jsonToString(obj) {
-            return Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join(', ');
         }
 
         async function emergencyStop() {
-            addLog("!!! EMERGENCY ABORT DETECTED !!!", "error");
-            document.getElementById('targetStatus').innerText = "SYSTEM STOPPED.";
-            
-            try {
-                const res = await fetch('/emergency-stop', { method: 'POST' });
-                const data = await res.json();
-                setSystemMode("MANUAL"); // Revert mode dynamically
-                addLog("Shutdown frames published.", "warn");
-            } catch (e) {
-                addLog("Critical delivery failure!", "error");
+            addLog("Emergency stop sent.", "error");
+            if (publishTask({ task: "emergency_stop" })) {
+                currentMode = "MANUAL";
+                renderMode();
             }
         }
 
-        function updateTelemetry() {
-            document.getElementById('batVal').innerText = `${Math.floor(82 + Math.random() * 5)}%`;
-            document.getElementById('cpuVal').innerText = `${Math.floor(22 + Math.random() * 10)}%`;
-            
-            if (robotConnected) {
-                // Displays actual mock scaling metrics to dashboard layout
-                document.getElementById('distVal').innerText = statusText.innerText === 'AI Track Mode' ? `${Math.floor(350 + Math.random() * 100)} mm` : '-- mm';
+        function renderStatus(data) {
+            robotConnected = Boolean(data.connected);
+            currentMode = data.mode || currentMode;
+
+            els.statusDot.className = "dot";
+            if (robotConnected && currentMode === "AUTO") els.statusDot.classList.add("ready");
+            if (robotConnected && currentMode === "MANUAL") els.statusDot.classList.add("manual");
+            els.statusText.textContent = robotConnected ? `${currentMode} mode` : "Disconnected";
+
+            els.connectBtn.disabled = robotConnected || !mqttReady;
+            els.modeAuto.disabled = !robotConnected;
+            els.modeManual.disabled = !robotConnected;
+            renderMode();
+
+            const tele = data.telemetry || {};
+            const target = data.last_target || {};
+            const confidence = Number(target.confidence);
+            const visible = Boolean(target.visible);
+
+            els.driveChip.textContent = data.last_command || "STOP";
+            els.cmdVal.textContent = data.last_command || "STOP";
+            els.distanceChip.textContent = formatMM(tele.fused_distance_mm);
+            els.laserVal.textContent = formatMM(tele.laser_mm);
+            els.sonicVal.textContent = formatMM(tele.sonic_mm);
+            els.clearanceVal.textContent = formatMM(tele.front_clearance_mm);
+            els.modeVal.textContent = currentMode;
+            els.mqttVal.textContent = data.mqtt_connected ? "Online" : "Offline";
+            els.confVal.textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : "--";
+            els.targetChip.textContent = visible ? `x ${Math.round(target.x)}, y ${Math.round(target.y)}` : "No visual lock";
+            els.reasonVal.textContent = data.last_reason || "--";
+            els.targetProfile.textContent = formatProfile(data.target_profile);
+        }
+
+        async function pollStatus() {
+            try {
+                const data = await fetch("/status").then((res) => res.json());
+                renderStatus(data);
+            } catch (err) {
+                els.statusDot.className = "dot";
+                els.statusText.textContent = "Server offline";
             }
         }
-        setInterval(updateTelemetry, 1000);
+
+        els.connectBtn.addEventListener("click", connectRobot);
+        els.modeAuto.addEventListener("click", () => setSystemMode("AUTO"));
+        els.modeManual.addEventListener("click", () => setSystemMode("MANUAL"));
+        els.lockBtn.addEventListener("click", updateTarget);
+        els.stopBtn.addEventListener("click", emergencyStop);
+
+        els.dpad.querySelectorAll("button").forEach((button) => {
+            const action = button.dataset.drive;
+            const start = (event) => {
+                event.preventDefault();
+                button.classList.add("pressed");
+                manualSteer(action);
+            };
+            const stop = () => {
+                button.classList.remove("pressed");
+                if (action !== "STOP") manualSteer("STOP");
+            };
+            button.addEventListener("mousedown", start);
+            button.addEventListener("touchstart", start, { passive: false });
+            button.addEventListener("mouseup", stop);
+            button.addEventListener("mouseleave", stop);
+            button.addEventListener("touchend", stop);
+        });
+
+        window.addEventListener("keydown", (event) => {
+            if (event.repeat || !keyMap[event.code]) return;
+            if (currentMode !== "MANUAL" || !robotConnected) return;
+            activeKeys.add(event.code);
+            manualSteer(keyMap[event.code]);
+        });
+
+        window.addEventListener("keyup", (event) => {
+            if (!keyMap[event.code]) return;
+            activeKeys.delete(event.code);
+            if (currentMode === "MANUAL" && activeKeys.size === 0) manualSteer("STOP");
+        });
+
+        addLog("Control server ready; connecting MQTT task channel.", "info");
+        connectTaskBroker();
+        pollStatus();
+        setInterval(pollStatus, 700);
     </script>
 </body>
 </html>
