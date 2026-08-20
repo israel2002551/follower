@@ -583,6 +583,9 @@
         const activeKeys = new Set();
         const mqttWebSocketUrl = "__MQTT_WS_URL__";
         const taskTopic = "nodes/__ROBOT_ID__/tasks";
+        const apiBaseUrl = (window.location.protocol === "file:" || window.location.hostname.endsWith(".github.io"))
+            ? null
+            : window.location.origin;
 
         function addLog(message, type = "info") {
             const row = document.createElement("div");
@@ -728,8 +731,11 @@
         }
 
         async function pollStatus() {
+            if (!apiBaseUrl) return;
             try {
-                const data = await fetch("/status").then((res) => res.json());
+                const response = await fetch(`${apiBaseUrl}/status`);
+                if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+                const data = await response.json();
                 renderStatus(data);
             } catch (err) {
                 els.statusDot.className = "dot";
@@ -774,10 +780,14 @@
             if (currentMode === "MANUAL" && activeKeys.size === 0) manualSteer("STOP");
         });
 
-        addLog("Control server ready; connecting MQTT task channel.", "info");
+        addLog(apiBaseUrl
+            ? "Control server ready; connecting MQTT task channel."
+            : "Static preview mode. Run server.py and open http://localhost:8000 for live robot control.", apiBaseUrl ? "info" : "warn");
         connectTaskBroker();
-        pollStatus();
-        setInterval(pollStatus, 700);
+        if (apiBaseUrl) {
+            pollStatus();
+            setInterval(pollStatus, 700);
+        }
     </script>
 </body>
 </html>
