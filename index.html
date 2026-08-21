@@ -585,7 +585,9 @@
         const mqttWebSocketUrl = "wss://broker.emqx.io:8084/mqtt";
         const robotId = "sentinel_alpha_99x2";
         const taskTopic = `nodes/${robotId}/tasks`;
+        const motorControlTopic = `nodes/${robotId}/hardware_control`;
         const statusTopic = `nodes/${robotId}/dashboard_status`;
+        const manualDriveSpeed = 170;
 
         function addLog(message, type = "info") {
             const row = document.createElement("div");
@@ -610,6 +612,20 @@
                 return false;
             }
             taskClient.publish(taskTopic, JSON.stringify(task), { qos: 1 });
+            return true;
+        }
+
+        // The ESP32-C3 subscribes to this topic in motor_node.ino.
+        function publishMotorDrive(action) {
+            if (!mqttReady || !taskClient) {
+                addLog("MQTT motor connection is not ready.", "error");
+                return false;
+            }
+            const speed = action === "STOP" ? 0 : manualDriveSpeed;
+            taskClient.publish(motorControlTopic, JSON.stringify({ drive: action, speed }), { qos: 1 });
+            els.driveChip.textContent = action;
+            els.cmdVal.textContent = action;
+            els.reasonVal.textContent = "Direct MQTT command to ESP32-C3.";
             return true;
         }
 
@@ -664,10 +680,13 @@
         async function setSystemMode(mode) {
             if (mode === "MANUAL") {
                 if (!mqttReady) return;
+                // Stop AUTO control in parallel, but manual motor commands do not
+                // wait for the server and go directly to the C3 below.
                 if (!publishTask({ task: "set_mode", mode })) return;
+                publishMotorDrive("STOP");
                 currentMode = mode;
                 renderMode();
-                addLog("Manual mode enabled. Commands are sent to the server over MQTT.", "warn");
+                addLog("Manual mode enabled. Wheel commands go directly to the ESP32-C3.", "warn");
                 return;
             }
             if (!robotConnected || !publishTask({ task: "set_mode", mode })) return;
@@ -687,7 +706,7 @@
         async function manualSteer(action) {
             if (!mqttReady || currentMode !== "MANUAL") return;
             try {
-                publishTask({ task: "manual_drive", action });
+                publishMotorDrive(action);
             } catch (err) {
                 addLog("Manual command failed.", "error");
             }
@@ -707,6 +726,7 @@
 
         async function emergencyStop() {
             addLog("Emergency stop sent.", "error");
+            publishMotorDrive("STOP");
             if (publishTask({ task: "emergency_stop" })) {
                 currentMode = "MANUAL";
                 renderMode();
