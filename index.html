@@ -581,11 +581,11 @@
         let mqttReady = false;
         let taskClient = null;
         const activeKeys = new Set();
-        const mqttWebSocketUrl = "__MQTT_WS_URL__";
-        const taskTopic = "nodes/__ROBOT_ID__/tasks";
-        const apiBaseUrl = (window.location.protocol === "file:" || window.location.hostname.endsWith(".github.io"))
-            ? null
-            : window.location.origin;
+        // Keep these values aligned with the MQTT broker and ROBOT_ID in server.py.
+        const mqttWebSocketUrl = "wss://broker.emqx.io:8084/mqtt";
+        const robotId = "sentinel_alpha_99x2";
+        const taskTopic = `nodes/${robotId}/tasks`;
+        const statusTopic = `nodes/${robotId}/dashboard_status`;
 
         function addLog(message, type = "info") {
             const row = document.createElement("div");
@@ -614,10 +614,8 @@
         }
 
         function connectTaskBroker() {
-            // Placeholders are replaced by the FastAPI route. Avoid calling MQTT.js
-            // with one when this file is opened directly from disk.
             if (!/^wss?:\/\//i.test(mqttWebSocketUrl)) {
-                addLog("Open this dashboard through the FastAPI server (http://localhost:8000), not as a local file.", "error");
+                addLog("Set a valid MQTT WebSocket URL before using the dashboard.", "error");
                 return;
             }
 
@@ -628,8 +626,19 @@
             });
             taskClient.on("connect", () => {
                 mqttReady = true;
+                taskClient.subscribe(statusTopic, { qos: 0 });
                 addLog("MQTT task channel connected.", "info");
                 els.connectBtn.disabled = false;
+                els.modeManual.disabled = false;
+                els.mqttVal.textContent = "Online";
+            });
+            taskClient.on("message", (topic, payload) => {
+                if (topic !== statusTopic) return;
+                try {
+                    renderStatus(JSON.parse(payload.toString()));
+                } catch (err) {
+                    addLog("Received an invalid MQTT status update.", "error");
+                }
             });
             taskClient.on("reconnect", () => { mqttReady = false; });
             taskClient.on("offline", () => { mqttReady = false; });
@@ -653,8 +662,15 @@
         }
 
         async function setSystemMode(mode) {
-            if (!robotConnected) return;
-            if (!publishTask({ task: "set_mode", mode })) return;
+            if (mode === "MANUAL") {
+                if (!mqttReady) return;
+                if (!publishTask({ task: "set_mode", mode })) return;
+                currentMode = mode;
+                renderMode();
+                addLog("Manual mode enabled. Commands are sent to the server over MQTT.", "warn");
+                return;
+            }
+            if (!robotConnected || !publishTask({ task: "set_mode", mode })) return;
             currentMode = mode;
             renderMode();
             addLog(`${currentMode} mode enabled.`, currentMode === "MANUAL" ? "warn" : "info");
@@ -669,7 +685,7 @@
         }
 
         async function manualSteer(action) {
-            if (!robotConnected || currentMode !== "MANUAL") return;
+            if (!mqttReady || currentMode !== "MANUAL") return;
             try {
                 publishTask({ task: "manual_drive", action });
             } catch (err) {
@@ -703,12 +719,12 @@
 
             els.statusDot.className = "dot";
             if (robotConnected && currentMode === "AUTO") els.statusDot.classList.add("ready");
-            if (robotConnected && currentMode === "MANUAL") els.statusDot.classList.add("manual");
-            els.statusText.textContent = robotConnected ? `${currentMode} mode` : "Disconnected";
+            if (mqttReady && currentMode === "MANUAL") els.statusDot.classList.add("manual");
+            els.statusText.textContent = currentMode === "MANUAL" && mqttReady ? "MANUAL MQTT" : (robotConnected ? `${currentMode} mode` : "Disconnected");
 
             els.connectBtn.disabled = robotConnected || !mqttReady;
             els.modeAuto.disabled = !robotConnected;
-            els.modeManual.disabled = !robotConnected;
+            els.modeManual.disabled = !mqttReady;
             renderMode();
 
             const tele = data.telemetry || {};
@@ -728,19 +744,6 @@
             els.targetChip.textContent = visible ? `x ${Math.round(target.x)}, y ${Math.round(target.y)}` : "No visual lock";
             els.reasonVal.textContent = data.last_reason || "--";
             els.targetProfile.textContent = formatProfile(data.target_profile);
-        }
-
-        async function pollStatus() {
-            if (!apiBaseUrl) return;
-            try {
-                const response = await fetch(`${apiBaseUrl}/status`);
-                if (!response.ok) throw new Error(`Status request failed (${response.status})`);
-                const data = await response.json();
-                renderStatus(data);
-            } catch (err) {
-                els.statusDot.className = "dot";
-                els.statusText.textContent = "Server offline";
-            }
         }
 
         els.connectBtn.addEventListener("click", connectRobot);
@@ -780,14 +783,13 @@
             if (currentMode === "MANUAL" && activeKeys.size === 0) manualSteer("STOP");
         });
 
-        addLog(apiBaseUrl
-            ? "Control server ready; connecting MQTT task channel."
-            : "Static preview mode. Run server.py and open http://localhost:8000 for live robot control.", apiBaseUrl ? "info" : "warn");
+        window.addEventListener("blur", () => manualSteer("STOP"));
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) manualSteer("STOP");
+        });
+
+        addLog("Connecting to the MQTT robot status channel.", "info");
         connectTaskBroker();
-        if (apiBaseUrl) {
-            pollStatus();
-            setInterval(pollStatus, 700);
-        }
     </script>
 </body>
 </html>
