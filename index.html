@@ -636,14 +636,14 @@
             }
 
             taskClient = mqtt.connect(mqttWebSocketUrl, {
-                clientId: `FollowerDashboard_${Math.random().toString(16).slice(2)}`,
+                clientId: `dashboard_${Math.random().toString(16).slice(2, 10)}`,
                 clean: true,
-                reconnectPeriod: 1500
+                connectTimeout: 5000,
             });
             taskClient.on("connect", () => {
                 mqttReady = true;
                 taskClient.subscribe(statusTopic, { qos: 0 });
-                addLog("MQTT task channel connected.", "info");
+                addLog("MQTT task & status channels connected.", "info");
                 els.connectBtn.disabled = false;
                 els.modeManual.disabled = false;
                 els.mqttVal.textContent = "Online";
@@ -660,7 +660,7 @@
             taskClient.on("offline", () => { mqttReady = false; });
             taskClient.on("error", () => {
                 mqttReady = false;
-                addLog("MQTT task channel failed. Check MQTT_WS_URL.", "error");
+                addLog("MQTT task channel failed. Check broker connection.", "error");
             });
         }
 
@@ -680,8 +680,6 @@
         async function setSystemMode(mode) {
             if (mode === "MANUAL") {
                 if (!mqttReady) return;
-                // Stop AUTO control in parallel, but manual motor commands do not
-                // wait for the server and go directly to the C3 below.
                 if (!publishTask({ task: "set_mode", mode })) return;
                 publishMotorDrive("STOP");
                 currentMode = mode;
@@ -751,17 +749,27 @@
             const target = data.last_target || {};
             const confidence = Number(target.confidence);
             const visible = Boolean(target.visible);
+            const trackingSource = data.tracking_source || "NONE";
 
             els.driveChip.textContent = data.last_command || "STOP";
-            els.cmdVal.textContent = data.last_command || "STOP";
-            els.distanceChip.textContent = formatMM(tele.fused_distance_mm);
-            els.laserVal.textContent = formatMM(tele.laser_mm);
+            els.cmdVal.textContent = data.last_speed > 0 ? `${data.last_command} (${data.last_speed})` : (data.last_command || "STOP");
+            els.distanceChip.textContent = formatMM(tele.sonic_mm ?? tele.fused_distance_mm);
+            els.laserVal.textContent = "N/A (Ultrasonic Only)";
             els.sonicVal.textContent = formatMM(tele.sonic_mm);
-            els.clearanceVal.textContent = formatMM(tele.front_clearance_mm);
+            els.clearanceVal.textContent = formatMM(tele.sonic_mm);
             els.modeVal.textContent = currentMode;
             els.mqttVal.textContent = data.mqtt_connected ? "Online" : "Offline";
-            els.confVal.textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : "--";
-            els.targetChip.textContent = visible ? `x ${Math.round(target.x)}, y ${Math.round(target.y)}` : "No visual lock";
+
+            if (visible && trackingSource === "YOLO") {
+                els.targetChip.textContent = `YOLO: x ${Math.round(target.x)}, y ${Math.round(target.y)}`;
+                els.confVal.textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : "--";
+            } else if (trackingSource === "SENSOR") {
+                els.targetChip.textContent = `Ultrasonic Lock (${formatMM(tele.sonic_mm)})`;
+                els.confVal.textContent = "Ultrasonic Tracking";
+            } else {
+                els.targetChip.textContent = "No Target Lock";
+                els.confVal.textContent = "--";
+            }
             els.reasonVal.textContent = data.last_reason || "--";
             els.targetProfile.textContent = formatProfile(data.target_profile);
         }

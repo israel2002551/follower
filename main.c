@@ -3,12 +3,8 @@
 #include <ArduinoJson.h>
 #include <ESP32-RTSPServer.h>
 #include "esp_camera.h"
-#include <Wire.h>
-#include <Adafruit_VL53L0X.h>
 
-// --- ESP32-CAM Dedicated Safe Sensor Pins ---
-#define I2C_SDA_PIN   14
-#define I2C_SCL_PIN   15
+// --- ESP32-CAM Dedicated Safe Ultrasonic Pins ---
 #define SONIC_TRIG    13
 #define SONIC_ECHO    12
 
@@ -43,11 +39,9 @@ const int mqtt_port     = 1883;
 const char* tele_topic  = "nodes/sentinel_alpha_99x2/telemetry";
 
 int quality = 12;
-bool laserReady = false;
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 RTSPServer rtspServer;
-Adafruit_VL53L0X lox = Adafruit_VL53L0X();
 
 TaskHandle_t videoTaskHandle = NULL;
 
@@ -171,19 +165,12 @@ void networkTask(void* pvParameters) {
     if (!mqtt_client.connected()) reconnectMQTT();
     mqtt_client.loop();
 
-    if ((xTaskGetTickCount() - lastTelemetryTime) >= pdMS_TO_TICKS(200)) {
+    if ((xTaskGetTickCount() - lastTelemetryTime) >= pdMS_TO_TICKS(150)) {
       lastTelemetryTime = xTaskGetTickCount();
       
-      long laser_dist = -1;
-      if (laserReady) {
-        VL53L0X_RangingMeasurementData_t measure;
-        lox.getRangingMeasurement(&measure, false);
-        laser_dist = (measure.RangeStatus != 4) ? measure.RangeMilliMeter : -1;
-      }
       long sonic_dist = getUltrasonicDistanceMM();
       
       JsonDocument teleDoc;
-      teleDoc["laser_mm"] = laser_dist;
       teleDoc["sonic_mm"] = sonic_dist;
       teleDoc["wifi_rssi"] = WiFi.RSSI();
       
@@ -206,14 +193,6 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) delay(500);
   Serial.print("WiFi Connected. IP: ");
   Serial.println(WiFi.localIP());
-
-  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-  if (!lox.begin(0x29, false, &Wire)) {
-    Serial.println("VL53L0X Laser not found on I2C bus!");
-    laserReady = false;
-  } else {
-    laserReady = true;
-  }
 
   setupCamera();
   sensor_t * s = esp_camera_sensor_get(); 
